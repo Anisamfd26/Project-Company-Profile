@@ -1,10 +1,20 @@
 import { NextResponse } from 'next/server'
-import { supabase } from '../../../lib/supabase'
+import { getCollection } from '../../../lib/mongodb'
+import { initializeData } from '../../../lib/initData'
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import { v4 as uuidv4 } from 'uuid'
 
 const JWT_SECRET = process.env.JWT_SECRET || 'cdc-secret-key'
+
+// Initialize database on first request
+let isInitialized = false
+async function ensureInitialized() {
+  if (!isInitialized) {
+    await initializeData()
+    isInitialized = true
+  }
+}
 
 // Helper function to verify JWT token
 const verifyToken = (token) => {
@@ -29,17 +39,12 @@ export async function GET(request) {
   const { pathname } = new URL(request.url)
   
   try {
+    await ensureInitialized()
+
     // Get statistics
     if (pathname === '/api/statistics') {
-      const { data, error } = await supabase
-        .from('cdc_statistics')
-        .select('*')
-        .single()
-      
-      if (error && error.code !== 'PGRST116') {
-        return NextResponse.json({ error: error.message }, { status: 500 })
-      }
-      
+      const collection = await getCollection('statistics')
+      const data = await collection.findOne({})
       return NextResponse.json(data || {})
     }
 
@@ -50,119 +55,102 @@ export async function GET(request) {
       const locationType = url.searchParams.get('locationType')
       const tag = url.searchParams.get('tag')
       
-      let query = supabase
-        .from('internship_jobs')
-        .select(`
-          *,
-          companies (
-            id,
-            name,
-            logoPath,
-            industrySector,
-            location
-          )
-        `)
-        .eq('isActive', true)
-        .order('createdAt', { ascending: false })
+      const jobsCollection = await getCollection('jobs')
+      const companiesCollection = await getCollection('companies')
+      
+      let query = { isActive: true }
       
       if (search) {
-        query = query.or(`position.ilike.%${search}%,description.ilike.%${search}%`)
+        query.$or = [
+          { position: { $regex: search, $options: 'i' } },
+          { description: { $regex: search, $options: 'i' } }
+        ]
       }
       
       if (locationType) {
-        query = query.eq('locationType', locationType)
+        query.locationType = locationType
       }
       
       if (tag) {
-        query = query.eq('tag', tag)
+        query.tag = tag
       }
       
-      const { data, error } = await query
+      const jobs = await jobsCollection.find(query).sort({ createdAt: -1 }).toArray()
       
-      if (error) {
-        return NextResponse.json({ error: error.message }, { status: 500 })
-      }
+      // Populate company data
+      const jobsWithCompanies = await Promise.all(
+        jobs.map(async (job) => {
+          const company = await companiesCollection.findOne({ id: job.companyId })
+          return {
+            ...job,
+            companies: company
+          }
+        })
+      )
       
-      return NextResponse.json(data || [])
+      return NextResponse.json(jobsWithCompanies)
     }
 
     // Get latest 6 jobs
     if (pathname === '/api/jobs/latest') {
-      const { data, error } = await supabase
-        .from('internship_jobs')
-        .select(`
-          *,
-          companies (
-            id,
-            name,
-            logoPath,
-            industrySector,
-            location
-          )
-        `)
-        .eq('isActive', true)
-        .order('createdAt', { ascending: false })
+      const jobsCollection = await getCollection('jobs')
+      const companiesCollection = await getCollection('companies')
+      
+      const jobs = await jobsCollection
+        .find({ isActive: true })
+        .sort({ createdAt: -1 })
         .limit(6)
+        .toArray()
       
-      if (error) {
-        return NextResponse.json({ error: error.message }, { status: 500 })
-      }
+      // Populate company data
+      const jobsWithCompanies = await Promise.all(
+        jobs.map(async (job) => {
+          const company = await companiesCollection.findOne({ id: job.companyId })
+          return {
+            ...job,
+            companies: company
+          }
+        })
+      )
       
-      return NextResponse.json(data || [])
+      return NextResponse.json(jobsWithCompanies)
     }
 
     // Get single job by ID
-    if (pathname.startsWith('/api/jobs/')) {
+    if (pathname.startsWith('/api/jobs/') && pathname !== '/api/jobs/latest' && pathname !== '/api/jobs/apply') {
       const jobId = pathname.split('/').pop()
-      const { data, error } = await supabase
-        .from('internship_jobs')
-        .select(`
-          *,
-          companies (
-            id,
-            name,
-            logoPath,
-            industrySector,
-            location,
-            websiteUrl,
-            description
-          )
-        `)
-        .eq('id', jobId)
-        .single()
+      const jobsCollection = await getCollection('jobs')
+      const companiesCollection = await getCollection('companies')
       
-      if (error) {
-        return NextResponse.json({ error: error.message }, { status: 404 })
+      const job = await jobsCollection.findOne({ id: jobId })
+      
+      if (!job) {
+        return NextResponse.json({ error: 'Job not found' }, { status: 404 })
       }
       
-      return NextResponse.json(data)
+      const company = await companiesCollection.findOne({ id: job.companyId })
+      
+      return NextResponse.json({
+        ...job,
+        companies: company
+      })
     }
 
     // Get all companies
     if (pathname === '/api/companies') {
-      const { data, error } = await supabase
-        .from('companies')
-        .select('*')
-        .order('name', { ascending: true })
-      
-      if (error) {
-        return NextResponse.json({ error: error.message }, { status: 500 })
-      }
-      
-      return NextResponse.json(data || [])
+      const collection = await getCollection('companies')
+      const data = await collection.find({}).sort({ name: 1 }).toArray()
+      return NextResponse.json(data)
     }
 
     // Get company by ID
     if (pathname.startsWith('/api/companies/')) {
       const companyId = pathname.split('/').pop()
-      const { data, error } = await supabase
-        .from('companies')
-        .select('*')
-        .eq('id', companyId)
-        .single()
+      const collection = await getCollection('companies')
+      const data = await collection.findOne({ id: companyId })
       
-      if (error) {
-        return NextResponse.json({ error: error.message }, { status: 404 })
+      if (!data) {
+        return NextResponse.json({ error: 'Company not found' }, { status: 404 })
       }
       
       return NextResponse.json(data)
@@ -170,17 +158,9 @@ export async function GET(request) {
 
     // Get testimonials
     if (pathname === '/api/testimonials') {
-      const { data, error } = await supabase
-        .from('testimonials')
-        .select('*')
-        .eq('isActive', true)
-        .order('createdAt', { ascending: false })
-      
-      if (error) {
-        return NextResponse.json({ error: error.message }, { status: 500 })
-      }
-      
-      return NextResponse.json(data || [])
+      const collection = await getCollection('testimonials')
+      const data = await collection.find({ isActive: true }).sort({ createdAt: -1 }).toArray()
+      return NextResponse.json(data)
     }
 
     // Get news and events
@@ -188,23 +168,15 @@ export async function GET(request) {
       const url = new URL(request.url)
       const category = url.searchParams.get('category')
       
-      let query = supabase
-        .from('news_events')
-        .select('*')
-        .eq('isActive', true)
-        .order('eventDate', { ascending: false })
+      const collection = await getCollection('news')
+      let query = { isActive: true }
       
       if (category) {
-        query = query.eq('category', category)
+        query.category = category
       }
       
-      const { data, error } = await query
-      
-      if (error) {
-        return NextResponse.json({ error: error.message }, { status: 500 })
-      }
-      
-      return NextResponse.json(data || [])
+      const data = await collection.find(query).sort({ eventDate: -1 }).toArray()
+      return NextResponse.json(data)
     }
 
     // Get student profile (protected)
@@ -214,17 +186,17 @@ export async function GET(request) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
       }
       
-      const { data, error } = await supabase
-        .from('students')
-        .select('id, nim, fullName, email, major, currentSks, gpa, isEligible, cvPath, portfolioPath')
-        .eq('id', user.id)
-        .single()
+      const collection = await getCollection('students')
+      const student = await collection.findOne({ id: user.id })
       
-      if (error) {
-        return NextResponse.json({ error: error.message }, { status: 404 })
+      if (!student) {
+        return NextResponse.json({ error: 'Student not found' }, { status: 404 })
       }
       
-      return NextResponse.json(data)
+      // Remove password from response
+      delete student.password
+      
+      return NextResponse.json(student)
     }
 
     // Get student's applications (protected)
@@ -234,28 +206,34 @@ export async function GET(request) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
       }
       
-      const { data, error } = await supabase
-        .from('job_applications')
-        .select(`
-          *,
-          internship_jobs (
-            id,
-            position,
-            locationType,
-            companies (
-              name,
-              logoPath
-            )
-          )
-        `)
-        .eq('studentId', user.id)
-        .order('applicationDate', { ascending: false })
+      const applicationsCollection = await getCollection('applications')
+      const jobsCollection = await getCollection('jobs')
+      const companiesCollection = await getCollection('companies')
       
-      if (error) {
-        return NextResponse.json({ error: error.message }, { status: 500 })
-      }
+      const applications = await applicationsCollection
+        .find({ studentId: user.id })
+        .sort({ applicationDate: -1 })
+        .toArray()
       
-      return NextResponse.json(data || [])
+      // Populate job and company data
+      const applicationsWithDetails = await Promise.all(
+        applications.map(async (app) => {
+          const job = await jobsCollection.findOne({ id: app.jobId })
+          let company = null
+          if (job) {
+            company = await companiesCollection.findOne({ id: job.companyId })
+          }
+          return {
+            ...app,
+            internship_jobs: job ? {
+              ...job,
+              companies: company
+            } : null
+          }
+        })
+      )
+      
+      return NextResponse.json(applicationsWithDetails)
     }
 
     return NextResponse.json({ message: 'CDC Cakrawala University API' })
@@ -269,6 +247,8 @@ export async function POST(request) {
   const { pathname } = new URL(request.url)
   
   try {
+    await ensureInitialized()
+
     // Register student
     if (pathname === '/api/auth/register') {
       const body = await request.json()
@@ -278,12 +258,12 @@ export async function POST(request) {
         return NextResponse.json({ error: 'All fields are required' }, { status: 400 })
       }
       
+      const collection = await getCollection('students')
+      
       // Check if student already exists
-      const { data: existingStudent } = await supabase
-        .from('students')
-        .select('id')
-        .or(`nim.eq.${nim},email.eq.${email}`)
-        .single()
+      const existingStudent = await collection.findOne({
+        $or: [{ nim }, { email }]
+      })
       
       if (existingStudent) {
         return NextResponse.json({ error: 'Student with this NIM or email already exists' }, { status: 400 })
@@ -294,34 +274,36 @@ export async function POST(request) {
       
       // Create student
       const studentId = `student_${uuidv4()}`
-      const { data, error } = await supabase
-        .from('students')
-        .insert([{
-          id: studentId,
-          nim,
-          fullName,
-          email,
-          password: hashedPassword,
-          major,
-          currentSks: 0,
-          gpa: 0.00,
-          isEligible: false
-        }])
-        .select('id, nim, fullName, email, major, currentSks, gpa, isEligible')
-        .single()
-      
-      if (error) {
-        return NextResponse.json({ error: error.message }, { status: 500 })
+      const newStudent = {
+        id: studentId,
+        nim,
+        fullName,
+        email,
+        password: hashedPassword,
+        major,
+        currentSks: 0,
+        gpa: 0.00,
+        isEligible: false,
+        cvPath: null,
+        portfolioPath: null,
+        createdAt: new Date(),
+        updatedAt: new Date()
       }
+      
+      await collection.insertOne(newStudent)
       
       // Generate JWT token
       const token = jwt.sign(
-        { id: data.id, nim: data.nim, email: data.email },
+        { id: newStudent.id, nim: newStudent.nim, email: newStudent.email },
         JWT_SECRET,
         { expiresIn: '7d' }
       )
       
-      return NextResponse.json({ token, student: data })
+      // Remove password from response
+      delete newStudent.password
+      delete newStudent._id
+      
+      return NextResponse.json({ token, student: newStudent })
     }
 
     // Login student
@@ -333,14 +315,12 @@ export async function POST(request) {
         return NextResponse.json({ error: 'Email and password are required' }, { status: 400 })
       }
       
-      // Find student
-      const { data: student, error } = await supabase
-        .from('students')
-        .select('*')
-        .eq('email', email)
-        .single()
+      const collection = await getCollection('students')
       
-      if (error || !student) {
+      // Find student
+      const student = await collection.findOne({ email })
+      
+      if (!student) {
         return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 })
       }
       
@@ -357,8 +337,9 @@ export async function POST(request) {
         { expiresIn: '7d' }
       )
       
-      // Remove password from response
+      // Remove password and _id from response
       delete student.password
+      delete student._id
       
       return NextResponse.json({ token, student })
     }
@@ -377,24 +358,21 @@ export async function POST(request) {
         return NextResponse.json({ error: 'Job ID is required' }, { status: 400 })
       }
       
+      const jobsCollection = await getCollection('jobs')
+      const applicationsCollection = await getCollection('applications')
+      
       // Check if job exists
-      const { data: job } = await supabase
-        .from('internship_jobs')
-        .select('id')
-        .eq('id', jobId)
-        .single()
+      const job = await jobsCollection.findOne({ id: jobId })
       
       if (!job) {
         return NextResponse.json({ error: 'Job not found' }, { status: 404 })
       }
       
       // Check if already applied
-      const { data: existingApplication } = await supabase
-        .from('job_applications')
-        .select('id')
-        .eq('studentId', user.id)
-        .eq('jobId', jobId)
-        .single()
+      const existingApplication = await applicationsCollection.findOne({
+        studentId: user.id,
+        jobId: jobId
+      })
       
       if (existingApplication) {
         return NextResponse.json({ error: 'You have already applied for this job' }, { status: 400 })
@@ -402,22 +380,20 @@ export async function POST(request) {
       
       // Create application
       const applicationId = `app_${uuidv4()}`
-      const { data, error } = await supabase
-        .from('job_applications')
-        .insert([{
-          id: applicationId,
-          studentId: user.id,
-          jobId: jobId,
-          status: 'Applied'
-        }])
-        .select()
-        .single()
-      
-      if (error) {
-        return NextResponse.json({ error: error.message }, { status: 500 })
+      const newApplication = {
+        id: applicationId,
+        studentId: user.id,
+        jobId: jobId,
+        applicationDate: new Date(),
+        status: 'Applied',
+        notes: null
       }
       
-      return NextResponse.json({ message: 'Application submitted successfully', application: data })
+      await applicationsCollection.insertOne(newApplication)
+      
+      delete newApplication._id
+      
+      return NextResponse.json({ message: 'Application submitted successfully', application: newApplication })
     }
 
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
@@ -431,6 +407,8 @@ export async function PUT(request) {
   const { pathname } = new URL(request.url)
   
   try {
+    await ensureInitialized()
+
     // Update student profile (protected)
     if (pathname === '/api/students/profile') {
       const user = getUserFromRequest(request)
@@ -444,24 +422,33 @@ export async function PUT(request) {
       // Calculate eligibility (SKS >= 100, GPA >= 2.75)
       const isEligible = (currentSks >= 100 && gpa >= 2.75)
       
-      const { data, error } = await supabase
-        .from('students')
-        .update({
-          currentSks,
-          gpa,
-          cvPath,
-          portfolioPath,
-          isEligible
-        })
-        .eq('id', user.id)
-        .select('id, nim, fullName, email, major, currentSks, gpa, isEligible, cvPath, portfolioPath')
-        .single()
+      const collection = await getCollection('students')
       
-      if (error) {
-        return NextResponse.json({ error: error.message }, { status: 500 })
+      await collection.updateOne(
+        { id: user.id },
+        {
+          $set: {
+            currentSks,
+            gpa,
+            cvPath,
+            portfolioPath,
+            isEligible,
+            updatedAt: new Date()
+          }
+        }
+      )
+      
+      const updatedStudent = await collection.findOne({ id: user.id })
+      
+      if (!updatedStudent) {
+        return NextResponse.json({ error: 'Student not found' }, { status: 404 })
       }
       
-      return NextResponse.json(data)
+      // Remove password and _id from response
+      delete updatedStudent.password
+      delete updatedStudent._id
+      
+      return NextResponse.json(updatedStudent)
     }
 
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
