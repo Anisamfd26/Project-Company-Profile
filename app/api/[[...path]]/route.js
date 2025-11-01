@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getCollection } from '../../../lib/mongodb'
-import { initializeData } from '../../../lib/initData'
+import { initializeData, jobsData, newsData, companiesData } from '../../../lib/initData'
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import { v4 as uuidv4 } from 'uuid'
@@ -55,40 +55,27 @@ export async function GET(request) {
       const locationType = url.searchParams.get('locationType')
       const tag = url.searchParams.get('tag')
       
-      const jobsCollection = await getCollection('jobs')
-      const companiesCollection = await getCollection('companies')
-      
-      let query = { isActive: true }
-      
-      if (search) {
-        query.$or = [
-          { position: { $regex: search, $options: 'i' } },
-          { description: { $regex: search, $options: 'i' } }
-        ]
+      let filteredJobs = jobsData;
+
+      if (search && search !== 'undefined') {
+        filteredJobs = filteredJobs.filter(job => 
+          job.position.toLowerCase().includes(search.toLowerCase()) ||
+          job.companies.name.toLowerCase().includes(search.toLowerCase())
+        );
       }
-      
-      if (locationType) {
-        query.locationType = locationType
+
+      if (locationType && locationType !== 'all') {
+        filteredJobs = filteredJobs.filter(job => job.locationType === locationType);
       }
-      
-      if (tag) {
-        query.tag = tag
+
+      if (tag && tag !== 'all') {
+        filteredJobs = filteredJobs.filter(job => job.tag === tag);
       }
-      
-      const jobs = await jobsCollection.find(query).sort({ createdAt: -1 }).toArray()
-      
-      // Populate company data
-      const jobsWithCompanies = await Promise.all(
-        jobs.map(async (job) => {
-          const company = await companiesCollection.findOne({ id: job.companyId })
-          return {
-            ...job,
-            companies: company
-          }
-        })
-      )
-      
-      return NextResponse.json(jobsWithCompanies)
+
+      // Mensimulasikan data perusahaan yang sudah ada di dalam data dummy
+      // Tidak perlu join/populate lagi
+
+      return NextResponse.json(filteredJobs);
     }
 
     // Get latest 6 jobs
@@ -138,9 +125,8 @@ export async function GET(request) {
 
     // Get all companies
     if (pathname === '/api/companies') {
-      const collection = await getCollection('companies')
-      const data = await collection.find({}).sort({ name: 1 }).toArray()
-      return NextResponse.json(data)
+      // Menggunakan data dummy companies
+      return NextResponse.json(companiesData);
     }
 
     // Get company by ID
@@ -168,16 +154,15 @@ export async function GET(request) {
       const url = new URL(request.url)
       const category = url.searchParams.get('category')
       
-      const collection = await getCollection('news')
-      let query = { isActive: true }
-      
-      if (category) {
-        query.category = category
+      let filteredNews = newsData;
+
+      if (category && category !== 'all') {
+        filteredNews = newsData.filter(item => item.category === category);
       }
       
-      const data = await collection.find(query).sort({ eventDate: -1 }).toArray()
-      return NextResponse.json(data)
+      return NextResponse.json(filteredNews);
     }
+
 
     // Get student profile (protected)
     if (pathname === '/api/students/profile') {
@@ -263,7 +248,7 @@ export async function POST(request) {
       // Check if student already exists
       const existingStudent = await collection.findOne({
         $or: [{ nim }, { email }]
-      })
+     })
       
       if (existingStudent) {
         return NextResponse.json({ error: 'Student with this NIM or email already exists' }, { status: 400 })
