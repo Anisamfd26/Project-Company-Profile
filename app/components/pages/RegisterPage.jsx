@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/app/components/button'
@@ -7,79 +8,108 @@ import { Input } from '@/app/components/input'
 import { Label } from '@/app/components/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/app/components/select'
 import { GraduationCap } from 'lucide-react'
+import { supabase } from '@/lib/supabase/client'
 
 export default function RegisterPage() {
   const router = useRouter()
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [fullName, setFullName] = useState('');
+  const [role, setRole] = useState('MAHASISWA'); // Default role
+  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(false);
 
   const handleRegister = async (e) => {
     e.preventDefault()
-    const formData = new FormData(e.target)
-    const nim = formData.get('nim')
-    const fullName = formData.get('fullName')
-    const email = formData.get('email')
-    const password = formData.get('password')
-    const major = formData.get('major')
+    setLoading(true);
+    setError(null);
 
-    try {
-      const response = await fetch('/api/auth/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nim, fullName, email, password, major })
-      })
-
-      const data = await response.json()
-      if (response.ok) {
-        localStorage.setItem('token', data.token)
-        localStorage.setItem('user', JSON.stringify(data.student))
-        alert('Registrasi berhasil!')
-        router.push('/')
-        router.refresh()
-      } else {
-        alert(data.error || 'Registrasi gagal')
+    const { data, error } = await supabase.auth.signUp({
+      email: email,
+      password: password,
+      options: {
+        // Metadata ini akan ditangkap oleh Trigger SQL Anda di Supabase
+        data: {
+          full_name: fullName,
+          role: role 
+        }
       }
-    } catch (error) {
-      console.error('Register error:', error)
-      alert('Terjadi kesalahan saat registrasi')
+    });
+
+    setLoading(false);
+
+    if (error) {
+      setError(error.message);
+    } else {
+      alert('Pendaftaran berhasil! Silakan cek email Anda untuk verifikasi.');
+      router.push('/login'); // Arahkan ke halaman login
     }
   }
 
   return (
-    <div className="w-full min-h-screen flex items-center justify-center bg-gray-50 p-4">
-      <div className="w-full max-w-4xl flex rounded-2xl shadow-2xl overflow-hidden">
+    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="flex w-full max-w-4xl bg-white rounded-xl shadow-lg overflow-hidden m-4">
         {/* Sisi Kiri - Form */}
-        <div className="w-full md:w-1/2 bg-white p-8 md:p-12">
+        <div className="w-full md:w-1/2 p-8">
+          <div className="mb-8 text-center md:text-left">
+            <Link href="/" className="inline-flex items-center gap-2">
+              <GraduationCap className="h-8 w-8 text-[#00A59C]" />
+              <span className="text-2xl font-bold text-gray-800">CDC Cakrawala</span>
+            </Link>
+          </div>
           <h2 className="text-3xl font-bold text-gray-800 mb-2">Buat Akun Baru</h2>
           <p className="text-gray-600 mb-8">Satu langkah lagi menuju karier impian Anda.</p>
           <form onSubmit={handleRegister} className="space-y-4">
             <div>
-              <Label htmlFor="nim">NIM</Label>
-              <Input id="nim" name="nim" required className="mt-1" />
-            </div>
-            <div>
               <Label htmlFor="fullName">Nama Lengkap</Label>
-              <Input id="fullName" name="fullName" required className="mt-1" />
+              <Input 
+                id="fullName" 
+                name="fullName" 
+                type="text"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                required 
+                className="mt-1" />
             </div>
             <div>
               <Label htmlFor="email">Email</Label>
-              <Input id="email" name="email" type="email" required className="mt-1" />
+              <Input 
+                id="email" 
+                name="email" 
+                type="email" 
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required 
+                className="mt-1" />
             </div>
             <div>
               <Label htmlFor="password">Password</Label>
-              <Input id="password" name="password" type="password" required className="mt-1" />
+              <Input 
+                id="password" 
+                name="password" 
+                type="password" 
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required 
+                minLength={6}
+                className="mt-1" />
             </div>
             <div>
-              <Label htmlFor="major">Program Studi</Label>
-              <Select name="major" required>
-                <SelectTrigger className="mt-1"><SelectValue placeholder="Pilih Program Studi" /></SelectTrigger>
+              <Label htmlFor="role">Daftar Sebagai</Label>
+              <Select value={role} onValueChange={setRole}>
+                <SelectTrigger id="role" className="mt-1">
+                  <SelectValue placeholder="Pilih peran Anda..." />
+                </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Teknik Informatika">Teknik Informatika</SelectItem>
-                  <SelectItem value="Sistem Informasi">Sistem Informasi</SelectItem>
-                  <SelectItem value="Manajemen">Manajemen</SelectItem>
-                  <SelectItem value="Akuntansi">Akuntansi</SelectItem>
+                  <SelectItem value="MAHASISWA">Mahasiswa</SelectItem>
+                  <SelectItem value="ADMIN">Admin</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-            <Button type="submit" className="w-full bg-[#00A59C] text-white transition-transform duration-150 hover:opacity-95 active:scale-95 active:bg-[#00A59C]">Daftar</Button>
+            {error && <p className="text-sm text-red-600">{error}</p>}
+            <Button type="submit" className="w-full bg-[#00A59C] text-white transition-transform duration-150 hover:opacity-95 active:scale-95 active:bg-[#00A59C]" disabled={loading}>
+              {loading ? 'Mendaftarkan...' : 'Daftar'}
+            </Button>
           </form>
           <p className="text-center text-sm text-gray-600 mt-6">
             Sudah punya akun? <Link href="/login" className="font-semibold text-[#00A59C] hover:underline">Login di sini</Link>
