@@ -9,10 +9,20 @@ import { Badge } from '@/app/components/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/app/components/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/app/components/select';
 import { Label } from '@/app/components/label';
-import { Users, Briefcase, FileText, PlusCircle, Download } from 'lucide-react';
+import { Users, Briefcase, FileText, PlusCircle, Download, LogOut, LayoutDashboard, Menu, X, Newspaper } from 'lucide-react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 
 export default function AdminDashboardPage() {
+  const router = useRouter();
+  
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    router.push('/admin-login');
+  };
+
   const [stats, setStats] = useState({
     totalStudents: 0,
     totalJobs: 0,
@@ -20,6 +30,7 @@ export default function AdminDashboardPage() {
   });
   const [recentApplications, setRecentApplications] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   // State untuk preview modal
   const [selectedApp, setSelectedApp] = useState(null);
@@ -53,7 +64,9 @@ export default function AdminDashboardPage() {
           id,
           status,
           applied_at,
-          profiles ( full_name ),
+          alasan_apply,
+          portfolio_submitted_url,
+          profiles ( full_name, email, mahasiswa_details (prodi, semester, no_hp) ),
           lowongan_magang ( company_name, job_description )
         `)
         .order('applied_at', { ascending: false })
@@ -76,18 +89,18 @@ export default function AdminDashboardPage() {
   useEffect(() => { fetchData(); }, [fetchData]);
 
   const statCards = [
-    { title: 'Total Mahasiswa', value: stats.totalStudents, icon: Users, color: 'text-blue-500' },
-    { title: 'Lowongan Aktif', value: stats.totalJobs, icon: Briefcase, color: 'text-green-500' },
-    { title: 'Lamaran Pending', value: stats.pendingApplications, icon: FileText, color: 'text-yellow-500' },
+    { title: 'Total Mahasiswa', value: stats.totalStudents, icon: Users, color: 'bg-blue-100 text-blue-600' },
+    { title: 'Lowongan Aktif', value: stats.totalJobs, icon: Briefcase, color: 'bg-green-100 text-green-600' },
+    { title: 'Lamaran Pending', value: stats.pendingApplications, icon: FileText, color: 'bg-amber-100 text-amber-600' },
   ];
 
   const getStatusBadge = (status) => {
     switch (status) {
-      case 'PENDING': return 'bg-yellow-100 text-yellow-800';
-      case 'REVIEWED': return 'bg-blue-100 text-blue-800';
-      case 'ACCEPTED': return 'bg-green-100 text-green-800';
-      case 'REJECTED': return 'bg-red-100 text-red-800';
-      default: return 'bg-gray-100 text-gray-800';
+      case 'PENDING': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+      case 'REVIEWED': return 'bg-blue-100 text-blue-800 border-blue-200';
+      case 'ACCEPTED': return 'bg-green-100 text-green-800 border-green-200';
+      case 'REJECTED': return 'bg-red-100 text-red-800 border-red-200';
+      default: return 'bg-gray-100 text-gray-800 border-gray-200';
     }
   };
 
@@ -145,165 +158,249 @@ export default function AdminDashboardPage() {
   const applicantDetails = applicant?.mahasiswa_details?.[0];
   const job = selectedApp?.lowongan_magang;
 
+  if (loading && recentApplications.length === 0) {
+    return <div className="flex justify-center items-center min-h-screen bg-[#F8FAFC]">Memuat dasbor...</div>;
+  }
+
   return (
-    <div className="w-full min-h-screen bg-gray-50">
-      {/* Header */}
-      <section className="py-12 bg-white border-b">
-        <div className="container mx-auto px-4">
-          <div className="flex justify-between items-center">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-800">Dasbor Admin</h1>
-              <p className="text-lg text-gray-600">Selamat datang kembali, Admin!</p>
+    <div className="flex h-screen bg-[#F8FAFC] font-sans selection:bg-[#00A59C]/20 overflow-hidden">
+      {/* Mobile Sidebar Overlay */}
+      {isSidebarOpen && (
+        <div className="fixed inset-0 bg-slate-900/40 z-40 lg:hidden backdrop-blur-sm" onClick={() => setIsSidebarOpen(false)} />
+      )}
+
+      {/* Sidebar */}
+      <aside className={`fixed inset-y-0 left-0 z-50 w-72 bg-white border-r border-slate-100 shadow-2xl lg:shadow-none transform transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-auto flex flex-col ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className="h-20 flex items-center px-6 border-b border-slate-50 shrink-0">
+          <Link href="/" className="flex items-center gap-3 transition-transform hover:scale-105 active:scale-95">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-[#00A59C] to-[#00D2C6] shadow-lg shadow-[#00A59C]/30 flex items-center justify-center text-white">
+              <LayoutDashboard size={22} />
             </div>
-            <div className="flex gap-2">
-              <Button asChild>
-                <Link href="/dashboard/admin/jobs/new"><PlusCircle className="mr-2 h-4 w-4" /> Tambah Lowongan</Link>
-              </Button>
-              <Button asChild variant="outline">
-                <Link href="/dashboard/admin/news/new"><PlusCircle className="mr-2 h-4 w-4" /> Buat Berita</Link>
-              </Button>
-            </div>
+            <span className="text-xl font-bold tracking-tight text-slate-800">Admin<span className="text-[#00A59C]">Portal</span></span>
+          </Link>
+          <button className="ml-auto lg:hidden text-slate-400 hover:text-slate-800 bg-slate-50 p-2 rounded-lg" onClick={() => setIsSidebarOpen(false)}>
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="flex-1 py-8 px-4 space-y-2 overflow-y-auto">
+          <p className="px-4 text-xs font-bold text-slate-400 uppercase tracking-wider mb-4">Navigasi Utama</p>
+          <Link href="/dashboard/admin" className="flex items-center gap-3 px-4 py-3 rounded-xl bg-[#00A59C]/10 text-[#00A59C] font-semibold transition-colors">
+            <LayoutDashboard size={20} /> Ikhtisar Dasbor
+          </Link>
+          <Link href="/dashboard/admin/jobs/new" className="flex items-center gap-3 px-4 py-3 rounded-xl text-slate-500 hover:bg-slate-50 hover:text-slate-900 font-medium transition-colors">
+            <Briefcase size={20} /> Kelola Lowongan
+          </Link>
+          <Link href="/dashboard/admin/news/new" className="flex items-center gap-3 px-4 py-3 rounded-xl text-slate-500 hover:bg-slate-50 hover:text-slate-900 font-medium transition-colors">
+            <Newspaper size={20} /> Kelola Berita
+          </Link>
+        </div>
+
+        <div className="p-4 border-t border-slate-50 shrink-0">
+          <div className="flex flex-col gap-4">
+             <div className="flex items-center gap-3 px-2">
+                <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-[#00A59C] font-bold text-lg">A</div>
+                <div className="flex flex-col overflow-hidden">
+                  <span className="text-sm font-bold text-slate-800 truncate">Administrator</span>
+                  <span className="text-xs text-slate-500 truncate">Super Admin</span>
+                </div>
+             </div>
+             <Button variant="ghost" className="w-full justify-start text-red-600 hover:text-red-700 hover:bg-red-50 transition-colors rounded-xl px-4" onClick={handleLogout}>
+               <LogOut className="w-5 h-5 mr-3" /> Keluar Sistem
+             </Button>
           </div>
         </div>
-      </section>
+      </aside>
 
-      {/* Main Content */}
-      <main className="container mx-auto px-4 py-8">
-        {/* Stats Section */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          {statCards.map((item, index) => (
-            <Card key={index}>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium text-gray-600">{item.title}</CardTitle>
-                <item.icon className={`h-5 w-5 ${item.color}`} />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{loading ? '...' : item.value}</div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+      {/* Main Content Area */}
+      <div className="flex-1 flex flex-col h-full overflow-hidden relative bg-[#F8FAFC]">
+        {/* Mobile Hamburger Header */}
+        <header className="h-20 bg-white/80 backdrop-blur-xl border-b border-slate-100 flex items-center px-6 lg:hidden shrink-0 sticky top-0 z-30">
+          <button onClick={() => setIsSidebarOpen(true)} className="p-2 -ml-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">
+            <Menu size={24} />
+          </button>
+          <span className="ml-4 font-bold text-slate-800 tracking-tight">Admin Portal</span>
+        </header>
 
-        {/* Recent Applications Table */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Lamaran Magang Terbaru</CardTitle>
-            <CardDescription>5 lamaran terakhir yang masuk dari mahasiswa.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Mahasiswa</TableHead>
-                  <TableHead>Posisi</TableHead>
-                  <TableHead>Tanggal</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Aksi</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {loading ? (
-                  <TableRow><TableCell colSpan="5" className="text-center">Memuat data...</TableCell></TableRow>
-                ) : recentApplications.length > 0 ? (
-                  recentApplications.map((app) => (
-                    <TableRow key={app.id}>
-                      <TableCell className="font-medium">{app.profiles?.full_name || 'N/A'}</TableCell>
-                      <TableCell>{app.lowongan_magang?.job_description || 'N/A'}</TableCell>
-                      <TableCell>{new Date(app.applied_at).toLocaleDateString('id-ID')}</TableCell>
-                      <TableCell>
-                        <Badge className={getStatusBadge(app.status)}>{app.status}</Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button variant="outline" size="sm" onClick={() => handlePreviewClick(app.id)}>
-                          Lihat Detail
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                ) : (
-                  <TableRow><TableCell colSpan="5" className="text-center">Belum ada lamaran.</TableCell></TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      </main>
-
-      {/* Application Preview Dialog */}
-      <Dialog open={!!selectedApp || isPreviewLoading} onOpenChange={(isOpen) => !isOpen && handleClosePreview()}>
-        <DialogContent className="sm:max-w-3xl">
-          {isPreviewLoading && <div className="p-8 text-center">Memuat detail lamaran...</div>}
-          {selectedApp && (
-            <>
-              <DialogHeader>
-                <DialogTitle className="text-2xl">Detail Lamaran</DialogTitle>
-                <DialogDescription>
-                  Lamaran untuk posisi <span className="font-semibold">{job.job_description}</span> oleh <span className="font-semibold">{applicant.full_name}</span>
-                </DialogDescription>
-              </DialogHeader>
-              
-              <div className="py-4 grid grid-cols-1 md:grid-cols-2 gap-6 max-h-[65vh] overflow-y-auto pr-4">
-                {/* Kolom Kiri */}
-                <div className="space-y-4">
-                  <h3 className="font-semibold text-lg">Info Pelamar</h3>
-                  <p><strong>Nama:</strong> {applicant.full_name}</p>
-                  <p><strong>Email:</strong> {applicant.email}</p>
-                  <p><strong>No. HP:</strong> {applicantDetails?.no_hp || 'N/A'}</p>
-                  <p><strong>Prodi:</strong> {applicantDetails?.prodi || 'N/A'}</p>
-                  <p><strong>Semester:</strong> {applicantDetails?.semester || 'N/A'}</p>
-                  
-                  <h3 className="font-semibold text-lg pt-4">Alasan Melamar</h3>
-                  <p className="text-gray-700 text-sm whitespace-pre-wrap bg-gray-50 p-3 rounded-md">{selectedApp.alasan_apply}</p>
+        {/* Scrollable Content */}
+        <div className="flex-1 overflow-y-auto w-full relative">
+          <section className="pt-10 pb-8 px-6 lg:px-10 relative overflow-hidden">
+            <div className="absolute top-0 right-0 -mr-20 -mt-20 w-64 h-64 rounded-full bg-[#00A59C] opacity-5 blur-3xl pointer-events-none"></div>
+            
+            <div className="container mx-auto relative z-10 w-full max-w-6xl">
+              <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-6 bg-white p-8 md:px-10 rounded-[2rem] shadow-sm ring-1 ring-slate-100/50 border border-slate-100">
+                <div>
+                  <p className="text-[#00A59C] font-semibold tracking-wide text-sm mb-2 uppercase">Ruang Kendali</p>
+                  <h1 className="text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight mb-2">Ikhtisar Panel ✨</h1>
+                  <p className="text-slate-500 text-lg">Kelola operasional CDC dengan efisien dan terpusat.</p>
                 </div>
-
-                {/* Kolom Kanan */}
-                <div className="space-y-4">
-                  <h3 className="font-semibold text-lg">Status & Aksi</h3>
-                  <div>
-                    <p className="text-sm font-medium mb-1">Status Saat Ini:</p>
-                    <Badge className={getStatusBadge(selectedApp.status)}>{selectedApp.status}</Badge>
-                  </div>
-
-                  {selectedApp.portfolio_submitted_url && (
-                    <div>
-                      <p className="text-sm font-medium mb-1">Portofolio/CV:</p>
-                      <Button asChild variant="outline" className="w-full">
-                        <a href={selectedApp.portfolio_submitted_url} target="_blank" rel="noopener noreferrer">
-                          <Download className="mr-2 h-4 w-4" /> Buka Dokumen
-                        </a>
-                      </Button>
-                    </div>
-                  )}
-
-                  <hr className="my-4"/>
-
-                  <div>
-                    <Label htmlFor="status" className="text-sm font-medium">Ubah Status Lamaran</Label>
-                    <Select value={newStatus} onValueChange={setNewStatus}>
-                      <SelectTrigger id="status" className="mt-1">
-                        <SelectValue placeholder="Pilih status baru..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="PENDING">Pending</SelectItem>
-                        <SelectItem value="REVIEWED">Direview</SelectItem>
-                        <SelectItem value="ACCEPTED">Diterima</SelectItem>
-                        <SelectItem value="REJECTED">Ditolak</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+                <div className="flex flex-wrap gap-3 shrink-0">
+                  <Button asChild className="bg-[#00A59C] hover:bg-[#008F87] text-white shadow-lg shadow-[#00A59C]/20 rounded-full px-6 py-6 text-md font-semibold transition-transform hover:-translate-y-1 active:scale-95">
+                    <Link href="/dashboard/admin/jobs/new"><PlusCircle className="mr-2 h-5 w-5" /> Lowongan Baru</Link>
+                  </Button>
+                  <Button asChild variant="outline" className="rounded-full px-6 py-6 text-md font-semibold border-slate-200 hover:border-slate-300 hover:bg-slate-50 transition-all hover:-translate-y-1">
+                    <Link href="/dashboard/admin/news/new"><Newspaper className="mr-2 h-5 w-5" /> Buat Berita</Link>
+                  </Button>
                 </div>
               </div>
+            </div>
+          </section>
 
-              <DialogFooter className="sm:justify-end gap-2">
-                <Button type="button" variant="secondary" onClick={handleClosePreview}>Tutup</Button>
-                <Button onClick={handleStatusUpdate} disabled={isUpdating || newStatus === selectedApp.status} className="bg-[#00A59C] text-white">
-                  {isUpdating ? 'Menyimpan...' : 'Simpan Perubahan'}
-                </Button>
-              </DialogFooter>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
+          <main className="container mx-auto px-6 lg:px-10 pb-12 w-full max-w-6xl">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+              {statCards.map((item, index) => (
+                <Card key={index} className="border-0 shadow-sm ring-1 ring-slate-200/50 rounded-3xl overflow-hidden hover:shadow-md transition-shadow bg-white">
+                  <CardHeader className="flex flex-row items-center justify-between border-b border-slate-50 px-6 py-5 bg-slate-50/30">
+                    <CardTitle className="text-sm font-semibold text-slate-500 tracking-wider uppercase">{item.title}</CardTitle>
+                    <div className={`p-2 rounded-xl shadow-sm ring-1 ring-slate-100/50 ${item.color}`}>
+                      <item.icon className="h-5 w-5" />
+                    </div>
+                  </CardHeader>
+                  <CardContent className="px-6 py-6 pb-8">
+                    <div className="text-5xl font-black text-slate-800 tracking-tight">{loading ? '...' : item.value}</div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+
+            <Card className="border-0 shadow-sm ring-1 ring-slate-200/50 rounded-3xl overflow-hidden bg-white mb-12">
+              <CardHeader className="border-b border-slate-50 px-6 py-5 bg-slate-50/30">
+                <CardTitle className="text-xl font-bold text-slate-800 flex items-center gap-2"><FileText className="text-[#00A59C] w-5 h-5"/> Lamaran Magang Terbaru</CardTitle>
+                <CardDescription className="text-slate-400">Pemantauan interaktif untuk 5 aktivitas lamaran terakhir.</CardDescription>
+              </CardHeader>
+              <CardContent className="p-0 overflow-x-auto w-full">
+                <Table className="w-full">
+                  <TableHeader>
+                    <TableRow className="bg-slate-50/50 hover:bg-slate-50/50 border-b-slate-100 border-b-2">
+                      <TableHead className="px-6 py-4 font-semibold text-slate-500">Mahasiswa</TableHead>
+                      <TableHead className="font-semibold text-slate-500">Posisi</TableHead>
+                      <TableHead className="font-semibold text-slate-500">Tanggal</TableHead>
+                      <TableHead className="font-semibold text-slate-500">Status</TableHead>
+                      <TableHead className="text-right px-6 font-semibold text-slate-500">Aksi</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {loading ? (
+                      <TableRow><TableCell colSpan="5" className="text-center py-10 text-slate-400 font-medium">Memuat data...</TableCell></TableRow>
+                    ) : recentApplications.length > 0 ? (
+                      recentApplications.map((app) => (
+                        <TableRow key={app.id} className="hover:bg-slate-50/80 transition-colors border-b border-slate-50">
+                          <TableCell className="font-semibold text-slate-800 px-6 py-4 whitespace-nowrap">{app.profiles?.full_name || 'N/A'}</TableCell>
+                          <TableCell className="text-slate-600">{app.lowongan_magang?.job_description || 'N/A'}</TableCell>
+                          <TableCell className="text-slate-500 whitespace-nowrap font-medium">{new Date(app.applied_at).toLocaleDateString('id-ID', {day: 'numeric', month: 'short', year: 'numeric'})}</TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className={`${getStatusBadge(app.status)} shadow-sm whitespace-nowrap px-3 py-1 font-semibold`}>{app.status}</Badge>
+                          </TableCell>
+                          <TableCell className="text-right px-6">
+                            <Button variant="outline" size="sm" onClick={() => handlePreviewClick(app.id)} className="rounded-full shadow-none border border-slate-200 hover:bg-[#00A59C]/10 hover:text-[#00A59C] hover:border-[#00A59C]/30 transition-colors">
+                              Lihat Detail
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableRow><TableCell colSpan="5" className="text-center py-16 text-slate-400 font-medium italic">Belum ada lamaran yang masuk.</TableCell></TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </main>
+        </div>
+
+        {/* Application Preview Dialog */}
+        <Dialog open={!!selectedApp || isPreviewLoading} onOpenChange={(isOpen) => !isOpen && handleClosePreview()}>
+          <DialogContent className="sm:max-w-3xl rounded-3xl overflow-hidden p-0 border-0 shadow-2xl">
+            {isPreviewLoading && <div className="p-16 text-center text-slate-500 font-medium flex flex-col items-center justify-center h-64">Memuat informasi mendalam...</div>}
+            {selectedApp && (
+              <>
+                <div className="bg-[#00A59C]/5 border-b border-[#00A59C]/10 p-8 pb-6 shadow-sm">
+                  <DialogHeader>
+                    <DialogTitle className="text-2xl font-extrabold tracking-tight text-slate-800">Detail Lamaran</DialogTitle>
+                    <DialogDescription className="text-slate-500 mt-2 text-md">
+                      Pendaftaran untuk posisi <span className="font-semibold text-slate-700">{job.job_description}</span> di <span className="font-semibold text-slate-700">{job.company_name}</span>
+                    </DialogDescription>
+                  </DialogHeader>
+                </div>
+                
+                <div className="p-8 grid grid-cols-1 lg:grid-cols-2 gap-10 max-h-[65vh] overflow-y-auto">
+                  {/* Kolom Kiri */}
+                  <div className="space-y-6">
+                    <div>
+                      <h3 className="font-bold text-slate-800 text-lg mb-4 flex items-center gap-2"><User className="text-[#00A59C] w-5 h-5"/> Data Pelamar</h3>
+                      <div className="space-y-3 p-5 rounded-2xl bg-slate-50 border border-slate-100">
+                        <div className="flex justify-between border-b border-slate-200 pb-2"><span className="text-slate-500 font-medium text-sm">Nama</span> <span className="font-semibold text-slate-800 text-right">{applicant.full_name}</span></div>
+                        <div className="flex justify-between border-b border-slate-200 pb-2"><span className="text-slate-500 font-medium text-sm">Email</span> <span className="font-semibold text-slate-800 text-right break-all">{applicant.email}</span></div>
+                        <div className="flex justify-between border-b border-slate-200 pb-2"><span className="text-slate-500 font-medium text-sm">No. Telepon</span> <span className="font-semibold text-slate-800 text-right">{applicantDetails?.no_hp || '-'}</span></div>
+                        <div className="flex justify-between border-b border-slate-200 pb-2"><span className="text-slate-500 font-medium text-sm">Program Studi</span> <span className="font-semibold text-slate-800 text-right">{applicantDetails?.prodi || '-'}</span></div>
+                        <div className="flex justify-between"><span className="text-slate-500 font-medium text-sm">Semester</span> <span className="font-semibold text-slate-800 text-right">{applicantDetails?.semester || '-'}</span></div>
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <h3 className="font-bold text-slate-800 text-lg mb-3">Pesan Pengantar</h3>
+                      <div className="text-slate-600 text-sm leading-relaxed whitespace-pre-wrap bg-yellow-50/50 border border-yellow-100 p-5 rounded-2xl">
+                        {selectedApp.alasan_apply || <span className="italic text-slate-400">Tidak ada pesan yang dicantumkan.</span>}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Kolom Kanan */}
+                  <div className="space-y-8">
+                    <div>
+                      <h3 className="font-bold text-slate-800 text-lg mb-4">Status & Kelengkapan</h3>
+                      <div className="p-5 rounded-2xl bg-white border border-slate-100 shadow-sm space-y-4">
+                        <div>
+                          <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Status Saat Ini</p>
+                          <Badge variant="outline" className={`${getStatusBadge(selectedApp.status)} px-3 py-1 font-bold text-sm shadow-sm`}>{selectedApp.status}</Badge>
+                        </div>
+
+                        {selectedApp.portfolio_submitted_url && (
+                          <div className="pt-2">
+                            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Dokumen CV / Portofolio</p>
+                            <Button asChild variant="outline" className="w-full rounded-xl border-slate-200 hover:bg-slate-50">
+                              <a href={selectedApp.portfolio_submitted_url} target="_blank" rel="noopener noreferrer">
+                                <Download className="mr-2 h-4 w-4 text-[#00A59C]" /> Unduh Dokumen
+                              </a>
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="p-5 rounded-2xl bg-slate-50 border border-slate-100">
+                        <Label htmlFor="status" className="font-bold text-slate-800 font-lg block mb-3">Otorisasi Status Baru</Label>
+                        <Select value={newStatus} onValueChange={setNewStatus}>
+                          <SelectTrigger id="status" className="bg-white border-slate-200 rounded-xl h-12 shadow-sm font-semibold">
+                            <SelectValue placeholder="Pilih status lamaran..." />
+                          </SelectTrigger>
+                          <SelectContent className="rounded-xl border-slate-100 shadow-lg">
+                            <SelectItem value="PENDING" className="font-medium cursor-pointer py-3 rounded-lg hover:bg-slate-50 focus:bg-slate-50">Tandai PENDING</SelectItem>
+                            <SelectItem value="REVIEWED" className="font-medium text-blue-700 cursor-pointer py-3 rounded-lg hover:bg-blue-50 focus:bg-blue-50">Tandai SEDANG DIREVIEW</SelectItem>
+                            <SelectItem value="ACCEPTED" className="font-medium text-green-700 cursor-pointer py-3 rounded-lg hover:bg-green-50 focus:bg-green-50">Terima Lamaran (ACCEPTED)</SelectItem>
+                            <SelectItem value="REJECTED" className="font-medium text-red-700 cursor-pointer py-3 rounded-lg hover:bg-red-50 focus:bg-red-50">Tolak Lamaran (REJECTED)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-slate-50 border-t border-slate-100 p-6 px-8 rounded-b-3xl">
+                  <DialogFooter className="sm:justify-end gap-3 w-full">
+                    <Button type="button" variant="outline" onClick={handleClosePreview} className="rounded-xl px-6 border-slate-200">Tutup</Button>
+                    <Button onClick={handleStatusUpdate} disabled={isUpdating || newStatus === selectedApp.status} className="bg-[#00A59C] hover:bg-[#008F87] text-white rounded-xl shadow-lg shadow-[#00A59C]/20 px-8 transition-transform active:scale-95">
+                      {isUpdating ? 'Memproses...' : 'Simpan Pembaruan Status'}
+                    </Button>
+                  </DialogFooter>
+                </div>
+              </>
+            )}
+          </DialogContent>
+        </Dialog>
+
+      </div>
     </div>
   );
 }

@@ -2,50 +2,43 @@
 const { Client } = require('pg');
 
 // *******************************************************************
-// PERHATIAN:
-// 1. GANTI [PASSWORD_BARU_ANDA] dengan password Anda yang AKTIF di Supabase.
-// 2. Kita menggunakan IP Pooler (18.140.126.126) dan port 6543 untuk menghindari masalah DNS.
+// DATA DARI PROJECT BARU KAMU:
+// URL: lvekfodhplhhghkcyavb.supabase.co
+// Password: CwmCLAtvOZzBUacs
 // *******************************************************************
-const DATABASE_URL = 'postgresql://postgres:[PASSWORD_BARU_ANDA]@18.140.126.126:6543/postgres?sslmode=require';
+
+// Format: postgresql://postgres:[PASSWORD]@[HOST]:[PORT]/postgres
+const DATABASE_URL = 'postgresql://postgres.lvekfodhplhhghkcyavb:CwmCLAtvOZzBUacs@aws-1-ap-southeast-2.pooler.supabase.com:6543/postgres';
 
 async function testConnection() {
-    console.log('--- UJI KONEKSI POSTGRES ---');
-    console.log(`Mencoba terhubung ke: 18.140.126.126:6543/postgres`);
+    console.log('--- UJI KONEKSI SUPABASE (POSTGRES) ---');
+    console.log(`Mencoba terhubung ke project: lvekfodhplhhghkcyavb`);
 
     const client = new Client({
         connectionString: DATABASE_URL,
+        ssl: {
+            rejectUnauthorized: false // Penting untuk koneksi ke Supabase dari luar
+        }
     });
 
     try {
         await client.connect();
-        console.log('✅ BERHASIL! Koneksi Database Sukses.');
-        console.log('Ini berarti: Password Anda BENAR dan Jaringan Anda TIDAK memblokir Supabase.');
+        console.log('✅ BERHASIL! Koneksi Database Supabase Sukses.');
         
-        // Coba query sederhana
-        const res = await client.query('SELECT 1 as result');
-        if (res.rows[0].result === 1) {
-            console.log('✅ Query Uji Coba Berhasil Dijalankan.');
-        }
+        // Coba query sederhana untuk cek tabel
+        const res = await client.query('SELECT current_database(), now()');
+        console.log('Waktu Server Database:', res.rows[0].now);
+        console.log('✅ Query Berhasil Dijalankan.');
 
     } catch (err) {
-        console.log('❌ GAGAL! Terjadi Error Koneksi Database.');
+        console.log('❌ GAGAL! Terjadi Error Koneksi.');
+        console.error('Pesan Error Detail:', err.message);
         
-        if (err.code === '28P01') {
-            console.log('\n*** ERROR AUTENTIKASI ***');
-            console.log('Penyebab: Password SALAH. (Cek Database Password di Supabase Settings Anda).');
-        } else if (err.code === 'ENOTFOUND' || err.code === 'EAI_AGAIN') {
-             console.log('\n*** ERROR JARINGAN / HOSTNAME ***');
-             console.log('Penyebab: Hostname tidak ditemukan. (Cek URL Supabase Anda, atau matikan VPN/Firewall).');
-        } else if (err.code === 'ECONNREFUSED' || err.code === 'ETIMEDOUT') {
-            console.log('\n*** ERROR FIREWALL / JARINGAN ***');
-            console.log('Penyebab: Koneksi ditolak atau Timeout. (Jaringan atau Firewall Anda kemungkinan memblokir port 6543).');
-        } else {
-             console.log('\n*** ERROR UMUM ***');
-             console.error('Pesan Error Detail:', err.message);
+        if (err.message.includes('password authentication failed')) {
+            console.log('\nSOLUSI: Password "CwmCLAtvOZzBUacs" sepertinya belum aktif atau salah ketik.');
         }
-
     } finally {
-        await client.end().catch(e => console.error("Error saat menutup koneksi:", e.message));
+        await client.end();
         console.log('--- UJI SELESAI ---');
     }
 }

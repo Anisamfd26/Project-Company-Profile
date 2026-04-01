@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 import { Button } from '@/app/components/button'
 import { Separator } from '@/app/components/separator'
 import { GraduationCap } from 'lucide-react'
@@ -12,6 +13,9 @@ export default function RootLayout({ children }) {
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [user, setUser] = useState(null)
   const [isScrolled, setIsScrolled] = useState(false)
+  
+  const pathname = usePathname()
+  const isAuthPage = pathname === '/login' || pathname === '/register' || pathname === '/admin-login' || pathname?.startsWith('/dashboard')
 
   useEffect(() => {
     // Check if user is logged in from localStorage
@@ -142,11 +146,11 @@ export default function RootLayout({ children }) {
     <html lang="en">
       <body>
         <div className="min-h-screen flex flex-col bg-[#FFFFFF]">
-          <Header />
+          {!isAuthPage && <Header />}
           <main className="flex-1 bg-white">
             {children}
           </main>
-          <Footer />
+          {!isAuthPage && <Footer />}
         </div>
       </body>
     </html>

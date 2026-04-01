@@ -10,7 +10,7 @@ import sys
 from datetime import datetime
 
 # Base URL from environment
-BASE_URL = "https://joblaunch-1.preview.emergentagent.com/api"
+BASE_URL = "http://localhost:3000/api"
 
 class CDCAPITester:
     def __init__(self):

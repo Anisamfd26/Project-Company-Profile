@@ -48,7 +48,8 @@ export default function LoginPage() {
       } else if (profileData) {
         // 3. Arahkan (Redirect) berdasarkan ROLE
         if (profileData.role === 'ADMIN') {
-          router.push('/dashboard/admin');
+          await supabase.auth.signOut(); // Logout otomatis
+          setError("Akses ditolak. Gunakan halaman Login Khusus Admin (/admin-login).");
         } else if (profileData.role === 'MAHASISWA') {
           router.push('/dashboard/mahasiswa');
         } else {

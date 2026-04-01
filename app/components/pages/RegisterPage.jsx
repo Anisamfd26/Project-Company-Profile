@@ -15,7 +15,6 @@ export default function RegisterPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
-  const [role, setRole] = useState('MAHASISWA'); // Default role
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
 
@@ -31,7 +30,7 @@ export default function RegisterPage() {
         // Metadata ini akan ditangkap oleh Trigger SQL Anda di Supabase
         data: {
           full_name: fullName,
-          role: role 
+          role: 'MAHASISWA' 
         }
       }
     });
@@ -93,18 +92,6 @@ export default function RegisterPage() {
                 required 
                 minLength={6}
                 className="mt-1" />
-            </div>
-            <div>
-              <Label htmlFor="role">Daftar Sebagai</Label>
-              <Select value={role} onValueChange={setRole}>
-                <SelectTrigger id="role" className="mt-1">
-                  <SelectValue placeholder="Pilih peran Anda..." />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="MAHASISWA">Mahasiswa</SelectItem>
-                  <SelectItem value="ADMIN">Admin</SelectItem>
-                </SelectContent>
-              </Select>
             </div>
             {error && <p className="text-sm text-red-600">{error}</p>}
             <Button type="submit" className="w-full bg-[#00A59C] text-white transition-transform duration-150 hover:opacity-95 active:scale-95 active:bg-[#00A59C]" disabled={loading}>
